@@ -1,0 +1,59 @@
+/* src/index.css */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+* { box-sizing: border-box; }
+
+.app-root { height: 100vh; width: 100vw; overflow: hidden; position: relative; }
+.chart-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+
+.ohlc-box {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 40;
+  background: rgba(255,255,255,0.95);
+  color: #000;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e6e6e6;
+  font-family: monospace;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.controls button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #f5f5f5;
+  cursor: pointer;
+}
+
+.fib-indicator.on { background: #0078ff; color: #fff; padding: 6px 10px; border-radius: 6px; font-family: monospace; }
+.fib-indicator.off { background: #f5f5f5; color: #000; padding: 6px 10px; border-radius: 6px; font-family: monospace; }
+
+.fib-active-msg {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
