@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { drawDashedLineOnCtx, drawDottedPreview } from "./utils/DottedLineDrawer";
+import DraggableModal from "./DraggableModal";
 import { FibStatusUI, syncCreate, syncUpdate, syncDelete } from "./fibSync";
 
 // Efficient FibTool — single overlay canvas, stable handlers, small retries, minimal allocations
@@ -16,6 +17,10 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
   const [fibMode, setFibMode] = useState(false);
   const [magnetOn, setMagnetOn] = useState(true);
   const [selectedFibUI, setSelectedFibUI] = useState(null);
+
+  // --- NEW MODAL STATE ---
+  const [editModal, setEditModal] = useState({ open: false, idx: null, high: "", low: "" });
+  const extFibRef = useRef(false);
 
   // scheduling / throttling
   const rafRef = useRef(null);
@@ -223,12 +228,14 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
     const groups = groupsRef.current || [];
     for (let i = 0; i < groups.length; i++) {
       const g = groups[i];
+      if (g.hidden) continue; // skip hidden FIBs
       try {
         const sx = chart.timeScale().timeToCoordinate(g.startTime);
         const ex = chart.timeScale().timeToCoordinate(g.endTime);
         if (!isFinite(sx) || !isFinite(ex)) continue;
         const leftX = Math.min(sx, ex);
-        const rightX = Math.max(sx, ex);
+        //const rightX = Math.max(sx, ex);
+        const rightX = g.extendRight ? rightEdge : Math.max(sx, ex);
         if (rightX < leftEdge || leftX > rightEdge) continue; // offscreen
 
         // compute Ys
@@ -263,7 +270,7 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
             if (g.showLabels) text += g.levels[j].label;
             if (g.showPrices) {
               if (text) text += " ";
-              text += `(${g.levels[j].price.toFixed(1)})`;
+              text += `(${g.levels[j].price.toFixed(2)})`;
             }
             if (text) {
               ctx.fillStyle = "#ffffff78";
@@ -291,7 +298,7 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
           if (g.showLabels) text += g.levels[li].label;
           if (g.showPrices) {
             if (text) text += " ";
-            text += `(${g.levels[li].price.toFixed(1)})`;
+            text += `(${g.levels[li].price.toFixed(2)})`;
           }
           if (text) {
             ctx.fillStyle = "#ffffff78";
@@ -333,21 +340,28 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
   const createFibBetween = async (start, end) => {
     if (!start || !end) return;
     let high, low, isDowntrend;
-    if (magnetRef.current) {
-      const startHigh = Number.isFinite(start.high) ? start.high : -Infinity;
-      const endHigh = Number.isFinite(end.high) ? end.high : -Infinity;
-      const startLow = Number.isFinite(start.low) ? start.low : Infinity;
-      const endLow = Number.isFinite(end.low) ? end.low : Infinity;
-      high = Math.max(startHigh, endHigh);
-      low = Math.min(startLow, endLow);
-      isDowntrend = start.high < end.high;
-    } else {
-      const { startPrice, endPrice } = resolveFibPrices(start, end);
-      if (startPrice == null || endPrice == null) return;
-      high = Math.max(startPrice, endPrice);
-      low = Math.min(startPrice, endPrice);
-      isDowntrend = startPrice < endPrice;
+    if(extFibRef.current){
+      high = start.price
+      low = end.price
+      isDowntrend = start.price < end.price;
+    }else {
+        if (magnetRef.current) {
+        const startHigh = Number.isFinite(start.high) ? start.high : -Infinity;
+        const endHigh = Number.isFinite(end.high) ? end.high : -Infinity;
+        const startLow = Number.isFinite(start.low) ? start.low : Infinity;
+        const endLow = Number.isFinite(end.low) ? end.low : Infinity;
+        high = Math.max(startHigh, endHigh);
+        low = Math.min(startLow, endLow);
+        isDowntrend = start.high < end.high;
+      } else {
+        const { startPrice, endPrice } = resolveFibPrices(start, end);
+        if (startPrice == null || endPrice == null) return;
+        high = Math.max(startPrice, endPrice);
+        low = Math.min(startPrice, endPrice);
+        isDowntrend = startPrice < endPrice;
+      }
     }
+    
 
     const levels = computeFibLevels(high, low, isDowntrend);
     const tempId = `temp-${Date.now()}`;
@@ -364,7 +378,6 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
         high: group.high,
         low: group.low,
         isDowntrend: Boolean(group.isDowntrend),
-        levels: group.levels,
         showLabels: !!group.showLabels,
         showPrices: !!group.showPrices,
       };
@@ -387,6 +400,7 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
       previewCanvasRef.current = null;
     }
     fibTempRef.current = null;
+    extFibRef.current = false;
   };
 
   const clickHandler = (param) => {
@@ -491,7 +505,7 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
       if (!Array.isArray(fibs)) return;
       for (const fib of fibs) {
         const exists = groupsRef.current.some((g) => g.id === fib.id || (g.startTime === fib.startTime && g.endTime === fib.endTime && g.high === fib.high && g.low === fib.low));
-        if (!exists) groupsRef.current.push({ ...fib, _pending: false });
+        if (!exists) groupsRef.current.push({ ...fib,levels: computeFibLevels(fib.high, fib.low, fib.isDowntrend), _pending: false });
       }
       scheduleRedraw(true);
       retryDrawPendingGroups();
@@ -532,6 +546,7 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
           previewCanvasRef.current = null;
           fibTempRef.current = null;
           setSelectedFibUI(null);
+          closeEditModal();
         }
       } catch {}
     };
@@ -648,6 +663,8 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
     container?.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
 
+    
+
     // fetch once
     if (!hasFetchedRef.current) { hasFetchedRef.current = true; fetchFibs(); }
 
@@ -688,6 +705,102 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
     scheduleRedraw(true);
   };
 
+  // --- MODAL HANDLERS ---
+  const openEditModal = (idx) => {
+    const g = groupsRef.current[idx];
+    if (!g) return;
+    setEditModal({
+      open: true,
+      idx,
+      high: g.high.toFixed(2),
+      low: g.low.toFixed(2),
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditModal({ open: false, idx: null, high: "", low: "" });
+  };
+
+  const handleEditOk = (idx) => {
+    const { high, low } = editModal;
+    if (idx == null) return;
+    const g = groupsRef.current[idx];
+    if (!g) return;
+
+    const parsedHigh = parseFloat(high);
+    const parsedLow = parseFloat(low);
+    if (!Number.isFinite(parsedHigh) || !Number.isFinite(parsedLow)) return;
+
+    g.high = parsedHigh;
+    g.low = parsedLow;
+    g.levels = computeFibLevels(g.high, g.low, g.isDowntrend);
+    syncUpdate(g);
+    scheduleRedraw(true);
+    closeEditModal();
+  };
+
+  const extendedFib = (idx, pax) => {
+    if (idx == null) return;
+    const g = groupsRef.current[idx];
+    if (!g || !Array.isArray(g.levels)) return;
+
+    extFibRef.current = true;
+
+    // Validate pax value
+    const validPax = [4.764, 3.618, 2.618,1.618,1.0,0.0];
+    if (!validPax.includes(Number(pax))) {
+      console.warn("extendedFib(): invalid pax value", pax);
+      return;
+    }
+
+    // Always include the 2.618 level as the second reference,
+    // except when pax === 1.618 (then 1.618 becomes the second)
+    const primaryLevelValue = pax;
+    // const secondaryLevelValue = pax === 2.618 ? 1.618 : 2.618;
+    //const secondaryLevelValue = pax === 2.618 ? 1.618 : (pax === 1.618 ? 1.0 : 2.618);
+
+    const secondaryLevelValue =
+      pax === 2.618 ? 1.618 :
+      pax === 1.618 ? 1.0 :
+      pax === 1.0 ? 0.618 :
+      pax === 0.0 ? 0.382 :
+      2.618;
+
+
+    // Find levels safely
+    const levelPrimary = g.levels.find(l => Number(l.r) === primaryLevelValue);
+    const levelSecondary = g.levels.find(l => Number(l.r) === secondaryLevelValue);
+
+    const pricePrimary = Number(levelPrimary?.price ?? g.high);
+    const priceSecondary = Number(levelSecondary?.price ?? g.low);
+
+    // Validate before creating
+    if (!Number.isFinite(pricePrimary) || !Number.isFinite(priceSecondary)) {
+      console.warn("extendedFib(): invalid price values", { pricePrimary, priceSecondary, pax });
+      return;
+    }
+    // for BTC
+    const timeShift = 3600*4*8;
+    //const timeShift = 3600*3;
+
+
+    // previously used
+    let shiftedStart = Number(g.startTime) + timeShift;
+    let shiftedEnd = Number(g.endTime) + timeShift;
+
+    // let shiftedStart = Number(g.endTime) + timeShift;
+    // let shiftedEnd = Number(g.endTime) + timeShift +3600*1;
+
+    
+
+    // Create the new fib
+    createFibBetween(
+      { time: shiftedStart, price: pricePrimary },
+      { time: shiftedEnd, price: priceSecondary }
+    );
+};
+
+
   return (
     <>
       <div style={{ position: "relative" }}><FibStatusUI /></div>
@@ -703,17 +816,66 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
       </div>
 
       {selectedFibUI && (
-        <div
-          style={{ position: "absolute", left: selectedFibUI.xPx, top: selectedFibUI.yPx, transform: "translate(-50%, -120%)", zIndex: 2000, pointerEvents: "auto", display: "flex", gap: "8px" }}
-        >
-          <button onClick={() => deleteFibByIndex(selectedFibUI.idx)} style={{ background: '#ff4d4f', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Delete</button>
-          <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.showLabels = !g.showLabels; scheduleRedraw(true); syncUpdate(g); }} style={{ background: '#1890ff', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Labels</button>
-          <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.showPrices = !g.showPrices; scheduleRedraw(true); syncUpdate(g); }} style={{ background: '#722ed1', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Prices</button>
-          <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.isDowntrend = !g.isDowntrend; g.levels = computeFibLevels(g.high, g.low, g.isDowntrend); syncUpdate(g); scheduleRedraw(true); }} style={{ background: '#13c2c2', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>REV</button>
+        
+
+        // for sensex
+        <div style={{ position: "absolute", left: selectedFibUI.xPx, top: selectedFibUI.yPx, transform: "translate(-50%, -120%)", zIndex: 2000, pointerEvents: "auto", display: "flex", gap: "8px", alignItems:"center", flexDirection:"column" }}>
+          <div style={{display:"flex",gap:"8px", alignItems:"center", justifyContent:"center"}}>
+            {/* <button onClick={() => deleteFibByIndex(selectedFibUI.idx)} style={{ background: '#ff4d4f', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Delete</button> */}
+            <button onClick={() => openEditModal(selectedFibUI.idx)} style={{ background: "#fa8c16", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>Edit</button>
+            <button onClick={() => extendedFib(selectedFibUI.idx,2.618)} style={{ background: "#aa16faff", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>Ext2.6</button>
+            <button onClick={() => extendedFib(selectedFibUI.idx,1.618)} style={{ background: "#fa16a6ff", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>Ext1.6</button>
+            {/* <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx];  g.hidden = !g.hidden; scheduleRedraw(true); }} style={{ background: '#d12ebeff', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Hide</button>  */}
+            {/* <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx];  g.extendRight = !g.extendRight; scheduleRedraw(true); }} style={{ background: '#d12ebeff', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>ToRight</button> */}
+            <button onClick={() => extendedFib(selectedFibUI.idx,1.0)} style={{ background: "rgb(242, 22, 250)", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>L1</button>
+            <button onClick={() => extendedFib(selectedFibUI.idx,0.0)} style={{ background: "rgb(109, 22, 250)", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>L0</button>
+            <button onClick={() => deleteFibByIndex(selectedFibUI.idx)} style={{ background: '#ff4d4f', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Delete</button> 
+          </div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <button onClick={() => extendedFib(selectedFibUI.idx,4.764)} style={{ background: "#fa16e7ff", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>Ext</button>
+            <button onClick={() => extendedFib(selectedFibUI.idx,3.618)} style={{ background: "#fa1680ff", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>Ext3.6</button>
+            {/* <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.showLabels = !g.showLabels; scheduleRedraw(true); syncUpdate(g); }} style={{ background: '#1890ff', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Labels</button> */}
+            <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.showPrices = !g.showPrices; scheduleRedraw(true); syncUpdate(g); }} style={{ background: '#722ed1', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>Prices</button>
+            <button onClick={() => { const g = groupsRef.current[selectedFibUI.idx]; g.isDowntrend = !g.isDowntrend; g.levels = computeFibLevels(g.high, g.low, g.isDowntrend); syncUpdate(g); scheduleRedraw(true); }} style={{ background: '#13c2c2', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>REV</button>
+          </div>
         </div>
+
+        
+      
+      
+      
       )}
 
+      
+
       {fibMode && <div className="fib-active-msg">FIB MODE ACTIVE (Esc to exit)</div>}
+
+      {/* --- MODAL UI --- */}
+        {editModal.open && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 3000,
+              pointerEvents: "none",
+            }}
+          >
+            <DraggableModal
+              title="Edit FIB Levels"
+              editModal={editModal}
+              setEditModal={setEditModal}
+              onOk={() => handleEditOk(selectedFibUI.idx)}
+              onCancel={closeEditModal}
+            />
+          </div>
+        )}
+      
     </>
   );
 }

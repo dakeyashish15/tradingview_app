@@ -468,12 +468,27 @@ export default function GoToDate({ chart, dataRef, containerRef }) {
   // ---------- load remembered date (sessionStorage + history.state fallback) ----------
   useEffect(() => {
     try {
-      // prefer history.state value (helps when browser restores closed tabs)
-      const hs = (typeof window !== "undefined" && window.history && window.history.state) || null;
       let parsed = null;
-      if (hs && hs[STORAGE_KEY]) {
-        const d = new Date(hs[STORAGE_KEY]);
-        if (!Number.isNaN(d.getTime())) parsed = d;
+
+      // 1️⃣ Check URL param (?gotoDate=YYYY-MM-DD)
+      const params = new URLSearchParams(window.location.search);
+      const gotoDate = params.get("gotoDate");
+      if (gotoDate) {
+        const d = new Date(gotoDate);
+        if (!Number.isNaN(d.getTime())) {
+          parsed = d;
+        }
+      }
+
+      // 2️⃣ If no URL param, try restoring from history.state or sessionStorage
+      if (!parsed) {
+        const hs =
+          (typeof window !== "undefined" && window.history && window.history.state) ||
+          null;
+        if (hs && hs[STORAGE_KEY]) {
+          const d = new Date(hs[STORAGE_KEY]);
+          if (!Number.isNaN(d.getTime())) parsed = d;
+        }
       }
 
       if (!parsed) {
@@ -484,19 +499,34 @@ export default function GoToDate({ chart, dataRef, containerRef }) {
         }
       }
 
+      // 3️⃣ Apply if valid
       if (parsed) {
         setSelectedDate(parsed);
-        // ensure history.state contains it: replaceState is cheap and preserves existing state
+
+        // sync sessionStorage + history.state
+        sessionStorage.setItem(STORAGE_KEY, parsed.toISOString());
         try {
-          const newS = Object.assign({}, window.history.state || {}, { [STORAGE_KEY]: parsed.toISOString() });
+          const newS = Object.assign({}, window.history.state || {}, {
+            [STORAGE_KEY]: parsed.toISOString(),
+          });
           window.history.replaceState(newS, "");
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          console.warn("Failed to replaceState", e);
+        }
+
+        // If URL param was used, trigger handleGo automatically
+        if (gotoDate) {
+          const timer = setTimeout(() => handleGo(parsed), 500);
+          return () => clearTimeout(timer);
+        }
       }
     } catch (e) {
-      // ignore silently
+      console.warn("Failed to initialize GoToDate", e);
     }
-    // run once
+    // Run only once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   // keyboard shortcut Alt+G to open
   useEffect(() => {

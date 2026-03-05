@@ -4,8 +4,10 @@ import { createChart } from "lightweight-charts";
 import OHLCBox from "./OHLCBox";
 import FibTool from "./FibTool";
 import RangeMeasure from "./RangeMeasure";
-import { initSessionBreaks } from "./sessionBreaks";
+//import { initSessionBreaks } from "./sessionBreaks";
+import { initSessionBreaks } from "./sessionbreak_btc";
 import GoToDate from "./GoToDate";
+import ShapeTool from "./ShapeTool";
 
 export default function ChartContainer() {
   const containerRef = useRef(null);
@@ -22,11 +24,13 @@ export default function ChartContainer() {
     if (!ts) return null;
     // Convert "YYYY-MM-DD HH:mm:ss" → Unix seconds
     const d = new Date(ts.replace(" ", "T"));
-    const shifted = d.getTime() + 5.5 * 60 * 60 * 1000;
-    return Math.floor(shifted / 1000);
+    const shifted = d.getTime() ;
+    return Math.floor(shifted / 1000)+5.5*60*60; //for btc_api
+    //return Math.floor(shifted / 1000)+11*60*60; // sensex
   };
 
   useEffect(() => {
+    
     const container = containerRef.current;
     if (!container) return;
 
@@ -44,6 +48,9 @@ export default function ChartContainer() {
       },
       crosshair: {
         mode: 0,
+        vertLine: {
+          labelVisible: false, // 👈 kill default time label
+        },
       },
       timeScale: {
         borderColor: "rgba(255, 255, 255, 0.1)", // faint border
@@ -56,6 +63,22 @@ export default function ChartContainer() {
     });
 
     chartRef.current = chart;
+
+    const timeLabel = document.createElement("div");
+    timeLabel.style.position = "absolute";
+    timeLabel.style.pointerEvents = "none";
+    timeLabel.style.padding = "4px 8px";
+    timeLabel.style.fontFamily = "monospace";
+    timeLabel.style.fontSize = "12px";
+    timeLabel.style.background = "#1e222d";
+    timeLabel.style.color = "#d0d0d0";
+    timeLabel.style.borderRadius = "4px";
+    timeLabel.style.whiteSpace = "nowrap";
+    timeLabel.style.display = "none";
+    timeLabel.style.zIndex = 20;
+
+    container.appendChild(timeLabel);
+
 
     const series = chart.addCandlestickSeries({
       priceFormat: {
@@ -73,6 +96,45 @@ export default function ChartContainer() {
       wickVisible: true,
     });
     seriesRef.current = series;
+
+    const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    chart.subscribeCrosshairMove((param) => {
+      if (!param || !param.time || !param.point) {
+        timeLabel.style.display = "none";
+        return;
+      }
+
+      const unix =
+        typeof param.time === "number"
+          ? param.time
+          : param.time.timestamp;
+
+      if (!Number.isFinite(unix)) {
+        timeLabel.style.display = "none";
+        return;
+      }
+
+      const d = new Date(unix * 1000);
+
+      const weekday = WEEKDAYS[d.getUTCDay()];
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const yyyy = d.getUTCFullYear();
+
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const min = String(d.getUTCMinutes()).padStart(2, "0");
+
+      timeLabel.textContent = `${weekday} ${dd}/${mm}/${yyyy} ${hh}:${min}`; // UTC
+
+      // position slightly above x-axis
+      timeLabel.style.left = `${param.point.x}px`;
+      timeLabel.style.bottom = "24px";
+      timeLabel.style.transform = "translateX(-50%)";
+      timeLabel.style.display = "block";
+
+    });
+
 
     // --- Helper to force crisp rendering on all canvases inside container ---
     const makeCanvasesCrisp = () => {
@@ -138,7 +200,7 @@ export default function ChartContainer() {
         
         const formatted = rows
           .map((r) => {
-            const t = parseKolkataToUnix(r.timestamp || r.time || r.date || "");
+            const t = parseKolkataToUnix(r.timestamp || r.time || r.date || "") 
             if (!Number.isFinite(t)) return null;
             return {
               time: t,
@@ -146,7 +208,7 @@ export default function ChartContainer() {
               high: Number(r.high),
               low: Number(r.low),
               close: Number(r.close),
-              ts: r.timestamp,
+              
             };
           })
           .filter(Boolean)
@@ -241,6 +303,13 @@ export default function ChartContainer() {
             latestTime={metaRef.current.latest}
           />
           <RangeMeasure chart={chartRef.current} series={seriesRef.current} containerRef={containerRef} dataRef={dataRef} />
+          <ShapeTool
+            chart={chartRef.current}
+            series={seriesRef.current}
+            containerRef={containerRef}
+            oldestTime={metaRef.current.oldest}
+            latestTime={metaRef.current.latest}
+          />
           <div className="controls" aria-hidden>
             <div className={fibModeOn ? "fib-indicator on" : "fib-indicator off"}>
               {fibModeOn ? "Fib Mode (Alt+F ON)" : "Press Alt+F for Fib"}
