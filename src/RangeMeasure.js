@@ -333,7 +333,17 @@ export default function RangeMeasure({ chart, series, containerRef, dataRef }) {
       window.removeEventListener("keyup", keyUp);
       if (window.__rangeMeasureRedraw) delete window.__rangeMeasureRedraw;
     };
-  }, [chart, series, containerRef, dataRef, active]);
+  }, [
+  chart,
+  series,
+  containerRef,
+  dataRef,
+  active,
+  clearAll,
+  clearCanvas,
+  drawDottedLine,
+  pickNearestCandleByParam
+]);
 
   const wrapperStyle = {
     position: "fixed",

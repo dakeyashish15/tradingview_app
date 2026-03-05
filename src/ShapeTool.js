@@ -14,7 +14,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 export default function ShapeTool({ chart, series, containerRef, oldestTime, latestTime }) {
   const markersRef = useRef([]); // canonical marker array
   const [shapeMode, setShapeMode] = useState(false);
-  const [logs, setLogs] = useState([]);
+  const [, setLogs] = useState([]);
   const [selectedMarkerUI, setSelectedMarkerUI] = useState(null); // { marker, x, y }
 
   const addLog = useCallback((msg, type = "info") => {
