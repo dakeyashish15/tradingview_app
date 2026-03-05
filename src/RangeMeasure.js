@@ -50,6 +50,7 @@ export default function RangeMeasure({ chart, series, containerRef, dataRef }) {
   };
 
   // --- setup overlay + labels ---
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const root = containerRef?.current;
     if (!root || !chart) return;
