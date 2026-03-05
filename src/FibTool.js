@@ -499,7 +499,9 @@ export default function FibTool({ chart, series, containerRef, dataRef,oldestTim
   // fetch FIBs and merge
   const fetchFibs = async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/fibs?oldest_time=${oldestTime}&latest_time=${latestTime}`);
+      //const res = await fetch(`http://127.0.0.1:8000/api/fibs?oldest_time=${oldestTime}&latest_time=${latestTime}`);
+      const res = await fetch(`https://fastapi-backend-ac7i.onrender.com/api/fibs?oldest_time=${oldestTime}&latest_time=${latestTime}`);
+
       if (!res.ok) throw new Error(`Failed to load fibs: ${res.status}`);
       const fibs = await res.json();
       if (!Array.isArray(fibs)) return;

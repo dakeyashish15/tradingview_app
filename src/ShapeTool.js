@@ -60,7 +60,8 @@ export default function ShapeTool({ chart, series, containerRef, oldestTime, lat
 
     (async () => {
       try {
-        const url = `http://127.0.0.1:8000/api/shapes?start_time=${oldestTime ?? 0}&end_time=${latestTime ?? 0}`;
+        //const url = `http://127.0.0.1:8000/api/shapes?start_time=${oldestTime ?? 0}&end_time=${latestTime ?? 0}`;
+        const url = `https://fastapi-backend-ac7i.onrender.com/api/shapes?start_time=${oldestTime ?? 0}&end_time=${latestTime ?? 0}`;
         const res = await fetch(url);
         if (!res.ok) {
           addLog(`⚠️ Load shapes HTTP ${res.status}`, "warn");

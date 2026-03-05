@@ -191,7 +191,8 @@ export default function ChartContainer() {
       try {
         const path = window.location.pathname; // e.g. "/1"
         const offset = parseInt(path.replace("/", ""), 10) || 0;
-        const res = await fetch(`http://127.0.0.1:8000/data/15min?offset=${offset}`, { method: "GET" });
+        //const res = await fetch(`http://127.0.0.1:8000/data/15min?offset=${offset}`, { method: "GET" });
+        const res = await fetch(`https://fastapi-backend-ac7i.onrender.com/data/15min?offset=${offset}`, { method: "GET" });
         const raw = await res.json();
         const rows = Array.isArray(raw.candles) ? raw.candles : [];
         // ✅ store oldest/latest
